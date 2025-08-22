@@ -66,6 +66,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+
+    
+
+
 def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -173,6 +177,11 @@ def send_email(to_email: str, subject: str, body: str, attachment_path: Optional
 @app.get("/health")
 def health():
     return {"ok": True, "time": datetime.utcnow().isoformat()}
+
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello! Your API is running."}
 
 # --------------------------------------------------
 # Auth: Facilitators

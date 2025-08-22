@@ -1,8 +1,0 @@
-qrcode[pil]      # QR code generation
-pandas           # For CSV handling
-supabase         # Python SDK for Supabase
-python-dotenv    # For environment variables
-email-validator  # For checking emails
-fastapi
-uvicorn[standard]
-reportlab

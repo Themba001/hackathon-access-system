@@ -1,48 +1,33 @@
 # main.py
-from fastapi import FastAPI, Depends, HTTPException, Body
+from fastapi import FastAPI, Depends, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
-from fastapi import Query
 import os, uuid, qrcode, smtplib
 from email.message import EmailMessage
 from PIL import Image, ImageDraw, ImageFont
 
-from dependencies import (
-    supabase,
-    pwd_context,
-    create_access_token,
-    get_current_facilitator,
-)
+from dependencies import supabase, pwd_context, create_access_token, get_current_facilitator
 
 app = FastAPI(title="NWU Hackathon Access System")
 
+# ---------------- CORS ----------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=False,
 )
 
-# ---- Health & root ----
-@app.get("/health")
-def health():
-    return {"ok": True, "time": datetime.utcnow().isoformat()}
-
-@app.get("/")
-def root():
-    return {"message": "API is running"}
-
-# ---- Email setup ----
+# ---------------- Email Setup ----------------
 SMTP_EMAIL = os.getenv("EMAIL_USER")
 SMTP_PASSWORD = os.getenv("EMAIL_PASS")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT") or 587)
 
-def send_email(to_email: str, subject: str, body: str, attachment_path: Optional[str] = None) -> None:
+def send_email(to_email: str, subject: str, body: str, attachment_path: Optional[str] = None):
     if not (SMTP_EMAIL and SMTP_PASSWORD):
         return
     msg = EmailMessage()
@@ -59,7 +44,7 @@ def send_email(to_email: str, subject: str, body: str, attachment_path: Optional
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.send_message(msg)
 
-# ---- Ticket generation ----
+# ---------------- Ticket Generation ----------------
 def generate_ticket(name: str, email: str, participant_type: str, event_code: str) -> str:
     qr_data = f"{name}|{email}|{participant_type}|{event_code}"
     qr = qrcode.QRCode(box_size=10, border=4)
@@ -91,7 +76,7 @@ def generate_ticket(name: str, email: str, participant_type: str, event_code: st
     ticket.save(path)
     return path
 
-# ---- Models ----
+# ---------------- Models ----------------
 class FacilitatorSignup(BaseModel):
     email: EmailStr
     password: str
@@ -108,10 +93,7 @@ class Participant(BaseModel):
 class QRData(BaseModel):
     qr_code: str
 
-class IdOnly(BaseModel):
-    participant_id: str
-
-# ---------------- Auth: Facilitators ----------------
+# ---------------- Auth Endpoints ----------------
 @app.post("/facilitators/signup")
 def facilitator_signup(data: FacilitatorSignup):
     res = supabase.table("profiles").select("*").eq("email", data.email).eq("role", "facilitator").execute()
@@ -139,9 +121,7 @@ def facilitator_login(data: FacilitatorLogin):
 def whoami(current=Depends(get_current_facilitator)):
     return {"email": current.get("sub"), "role": current.get("role")}
 
-
-
-# ---------------- DEV helper: get participant ID from email ----------------
+# ---------------- Participant Helpers ----------------
 @app.get("/participant-id")
 def get_participant_id(email: str = Query(...), _=Depends(get_current_facilitator)):
     pres = supabase.table("participants").select("participant_id").eq("email", email).execute()
@@ -150,25 +130,23 @@ def get_participant_id(email: str = Query(...), _=Depends(get_current_facilitato
         raise HTTPException(status_code=404, detail="Participant not found")
     return {"participant_id": participant["participant_id"]}
 
-
-
 # ---------------- Participant Management ----------------
 @app.post("/participants")
 def add_participant(data: Participant, _=Depends(get_current_facilitator)):
     new_id = str(uuid.uuid4())
-    ticket_path = generate_ticket(data.name, data.email, data.participant_type or "Participant", new_id)
+    ticket_path = generate_ticket(data.name, data.email, data.participant_type, new_id)
 
     supabase.table("participants").insert({
         "participant_id": new_id,
         "full_name": data.name,
         "email": data.email,
-        "registration_status": "Registered",
+        "registration_status": "Registered"
     }).execute()
 
     supabase.table("tickets").insert({
         "participant_id": new_id,
         "ticket_uuid": str(uuid.uuid4()),
-        "pdf_path": ticket_path,
+        "pdf_path": ticket_path
     }).execute()
 
     send_email(data.email, f"Your {os.getenv('EVENT_NAME','NWU Hackathon')} Ticket", "Here is your ticket.", ticket_path)
@@ -214,6 +192,17 @@ def extract_email_from_qr(qr_code: str) -> str:
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid QR code format")
 
+def log_attendance(participant_id: str, event_type: str):
+    try:
+        supabase.table("attendance_logs").insert({
+            "participant_id": participant_id,
+            "event_type": event_type,
+            "status": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }).execute()
+    except Exception:
+        pass  # Non-critical, just log
+
 # ---------------- QR Endpoints ----------------
 @app.post("/checkin")
 def checkin(data: QRData, _=Depends(get_current_facilitator)):
@@ -227,16 +216,7 @@ def checkin(data: QRData, _=Depends(get_current_facilitator)):
         "checkin_status": True,
         "checkin_timestamp": datetime.utcnow().isoformat()
     }).eq("participant_id", participant["participant_id"]).execute()
-
-    try:
-        supabase.table("attendance_logs").insert({
-            "participant_id": participant["participant_id"],
-            "event_type": "checkin",
-            "status": True,
-            "timestamp": datetime.utcnow().isoformat()
-        }).execute()
-    except Exception:
-        pass
+    log_attendance(participant["participant_id"], "checkin")
 
     return {"message": f"{participant['full_name']} checked in."}
 
@@ -252,16 +232,7 @@ def boarding_qr(data: QRData, _=Depends(get_current_facilitator)):
         "transport_status": True,
         "transport_timestamp": datetime.utcnow().isoformat()
     }).eq("participant_id", participant["participant_id"]).execute()
-
-    try:
-        supabase.table("attendance_logs").insert({
-            "participant_id": participant["participant_id"],
-            "event_type": "boarding",
-            "status": True,
-            "timestamp": datetime.utcnow().isoformat()
-        }).execute()
-    except Exception:
-        pass
+    log_attendance(participant["participant_id"], "boarding")
 
     return {"message": f"{participant['full_name']} boarded the bus."}
 
@@ -277,20 +248,11 @@ def meals_qr(data: QRData, _=Depends(get_current_facilitator)):
         "meal_status": True,
         "meal_timestamp": datetime.utcnow().isoformat()
     }).eq("participant_id", participant["participant_id"]).execute()
-
-    try:
-        supabase.table("attendance_logs").insert({
-            "participant_id": participant["participant_id"],
-            "event_type": "meal",
-            "status": True,
-            "timestamp": datetime.utcnow().isoformat()
-        }).execute()
-    except Exception:
-        pass
+    log_attendance(participant["participant_id"], "meal")
 
     return {"message": f"{participant['full_name']} collected a meal."}
 
-# ---------------- DEV helper ----------------
+# ---------------- DEV / DEBUG ----------------
 @app.post("/dev/create_facilitator")
 def dev_create_facilitator(email: EmailStr, password: str):
     password_hash = pwd_context.hash(password)
@@ -300,3 +262,11 @@ def dev_create_facilitator(email: EmailStr, password: str):
         "password_hash": password_hash
     }).execute()
     return {"ok": True}
+
+@app.get("/health")
+def health():
+    return {"ok": True, "time": datetime.utcnow().isoformat()}
+
+@app.get("/")
+def root():
+    return {"message": "API is running"}

@@ -179,41 +179,71 @@ function renderScannerPage(title, endpoint) {
 function startScanner(endpoint) {
   const qrRegionId = "qr-reader";
 
-  if (html5QrcodeScanner) html5QrcodeScanner.clear();
+  if (html5QrcodeScanner) {
+    html5QrcodeScanner.clear();
+  }
 
   html5QrcodeScanner = new Html5Qrcode(qrRegionId);
 
-  html5QrcodeScanner.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: 250 },
-    async (decodedText) => {
-      document.getElementById("scan-result").textContent = "Scanned: " + decodedText;
+  html5QrcodeScanner
+    .start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      async (decodedText) => {
+        document.getElementById("scan-result").textContent =
+          "Scanned: " + decodedText;
 
-      try {
-        const token = getToken();
-        const res = await fetch(`${API_URL}${endpoint}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-          },
-          body: JSON.stringify({ qr_code: decodedText }),
-        });
-        const data = await res.json();
+        try {
+          // Parse QR: "name|email|participant_type|event_code"
+          const parts = decodedText.split("|");
+          if (parts.length < 2) throw new Error("Invalid QR format");
+          const email = parts[1].trim();
 
-        if (res.ok) Swal.fire("Success ✅", data.message || "Action completed", "success");
-        else Swal.fire("Error", data.detail || "Action failed", "error");
-      } catch (err) {
-        Swal.fire("Error", err.message, "error");
+          // Get participant_id from backend
+          const token = getToken();
+          const idRes = await fetch(`${API_URL}/participant-id?email=${encodeURIComponent(email)}`, {
+            headers: { Authorization: "Bearer " + token },
+          });
+
+          if (!idRes.ok) {
+            const errData = await idRes.json();
+            throw new Error(errData.detail || "Participant not found");
+          }
+
+          const { participant_id } = await idRes.json();
+
+          // Send to the intended action endpoint
+          const res = await fetch(`${API_URL}${endpoint}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify({ participant_id, qr_data: decodedText }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            Swal.fire("Success ✅", data.message || "Action completed", "success");
+          } else {
+            Swal.fire("Error", data.detail || "Action failed", "error");
+          }
+        } catch (err) {
+          Swal.fire("Error", err.message, "error");
+        }
+
+        html5QrcodeScanner.stop();
+      },
+      (errorMessage) => {
+        // ignore scan errors
       }
-
-      html5QrcodeScanner.stop();
-    },
-    (errorMessage) => {}
-  ).catch((err) => {
-    Swal.fire("Error", "Camera start failed: " + err, "error");
-  });
+    )
+    .catch((err) => {
+      Swal.fire("Error", "Camera start failed: " + err, "error");
+    });
 }
+
 
 // -------------------------------
 // Init

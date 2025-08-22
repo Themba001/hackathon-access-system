@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
-
+from fastapi import Query
 import os, uuid, qrcode, smtplib
 from email.message import EmailMessage
 from PIL import Image, ImageDraw, ImageFont
@@ -138,6 +138,19 @@ def facilitator_login(data: FacilitatorLogin):
 @app.get("/facilitators/me")
 def whoami(current=Depends(get_current_facilitator)):
     return {"email": current.get("sub"), "role": current.get("role")}
+
+
+
+# ---------------- DEV helper: get participant ID from email ----------------
+@app.get("/participant-id")
+def get_participant_id(email: str = Query(...), _=Depends(get_current_facilitator)):
+    pres = supabase.table("participants").select("participant_id").eq("email", email).execute()
+    participant = pres.data[0] if pres.data else None
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    return {"participant_id": participant["participant_id"]}
+
+
 
 # ---------------- Participant Management ----------------
 @app.post("/participants")

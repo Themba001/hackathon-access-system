@@ -6,6 +6,8 @@ from reportlab.lib.utils import ImageReader
 from .qr_service import qr_png_bytes
 
 
+
+
 PAGE_W, PAGE_H = A4
 
 

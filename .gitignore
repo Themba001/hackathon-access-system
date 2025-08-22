@@ -1,18 +1,28 @@
-# Secrets
-.env
-
-
 # Python
-venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.sqlite3
 
+# Virtual environment
+venv/
+env/
+.venv/
 
-# Frontend
-node_modules/
-dist/
-
-
-# OS/Editor
-.DS_Store
+# IDE / editor
 .vscode/
+.idea/
+
+# Environment files (you DO NOT want to commit secrets)
+.env
+.env.local
+.env.*.secret
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tickets / Generated PDFs
+tickets/
+*.pdf

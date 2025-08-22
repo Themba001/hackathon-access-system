@@ -1,6 +1,11 @@
 // app.js
 
 // -------------------------------
+// Config
+// -------------------------------
+const API_URL = "https://hackathon-access-system.onrender.com"; 
+
+// -------------------------------
 // Auth helpers
 // -------------------------------
 function saveToken(token) {
@@ -17,7 +22,7 @@ function clearToken() {
 // API wrappers
 // -------------------------------
 async function signup(email, password) {
-  const res = await fetch("http://127.0.0.1:8000/facilitators/signup", {
+  const res = await fetch(`${API_URL}/facilitators/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -26,7 +31,7 @@ async function signup(email, password) {
 }
 
 async function login(email, password) {
-  const res = await fetch("http://127.0.0.1:8000/facilitators/login", {
+  const res = await fetch(`${API_URL}/facilitators/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -37,7 +42,7 @@ async function login(email, password) {
 
 async function apiFetch(path) {
   const token = getToken();
-  const res = await fetch("http://127.0.0.1:8000" + path, {
+  const res = await fetch(API_URL + path, {
     headers: { Authorization: "Bearer " + token },
   });
   return res.json();
@@ -92,7 +97,7 @@ document.getElementById("signup-link")?.addEventListener("click", async (e) => {
     html: `
       <input type="email" id="swal-email" class="swal2-input" placeholder="Email">
       <input type="password" id="swal-password" class="swal2-input" placeholder="Password">
-    `,
+    `, 
     focusConfirm: false,
     preConfirm: () => {
       return {
@@ -205,7 +210,7 @@ function startScanner(endpoint) {
 
         try {
           const token = getToken();
-          const res = await fetch("http://127.0.0.1:8000" + endpoint, {
+          const res = await fetch(`${API_URL}${endpoint}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

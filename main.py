@@ -16,11 +16,32 @@ from supabase import Client, create_client
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from typing import Optional, Dict, Any
+from fastapi.middleware.cors import CORSMiddleware
+
+
 
 # --------------------------------------------------
 # App Initialization
 # --------------------------------------------------
 app = FastAPI(title="NWU Hackathon Access System")
+
+
+origins = [
+    "https://has-access.netlify.app",  # replace with your actual Netlify URL
+    "http://localhost:5173"  # optional, for local testing
+]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://has-access.netlify.app"],  # your Netlify URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+
 
 # CORS so your browser-based frontend can call the API
 app.add_middleware(

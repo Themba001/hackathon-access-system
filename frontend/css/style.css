@@ -1,3 +1,6 @@
+/* =========================
+   General Styles
+========================= */
 body {
   margin: 0;
   font-family: Arial, sans-serif;
@@ -5,85 +8,140 @@ body {
   color: #333;
 }
 
-.topbar {
-  background: #1e1e2f;
-  color: white;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px;
+h1, h2 {
+  margin: 0;
+  font-weight: 600;
 }
 
-.hamburger {
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: white;
+button {
   cursor: pointer;
-}
-
-.logout-btn {
-  background: crimson;
-  color: white;
   border: none;
-  padding: 6px 12px;
   border-radius: 6px;
-  cursor: pointer;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: bold;
 }
 
+a {
+  text-decoration: none;
+  color: #3498db;
+}
+
+/* =========================
+   Sidebar
+========================= */
 .sidebar {
   position: fixed;
   top: 0;
-  left: -250px;
+  left: -240px; /* hidden by default */
   width: 220px;
   height: 100%;
-  background: #2c2c3e;
-  color: white;
-  padding-top: 60px;
+  background: #2c3e50;
+  color: #fff;
+  overflow-x: hidden;
+  padding-top: 20px;
   transition: 0.3s;
   z-index: 1000;
 }
 
-.sidebar ul {
-  list-style: none;
-  padding: 0;
+.sidebar h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 18px;
 }
 
-.sidebar ul li {
-  margin: 20px 0;
-}
-
-.sidebar ul li a {
-  color: white;
-  text-decoration: none;
-  padding: 10px 20px;
+.sidebar a {
   display: block;
+  padding: 12px 20px;
+  font-size: 14px;
+  color: #ecf0f1;
+  transition: 0.2s;
 }
 
-.sidebar ul li a:hover {
-  background: #444;
+.sidebar a:hover {
+  background: #34495e;
+  color: #fff;
 }
 
+/* Sidebar active */
 .sidebar.active {
   left: 0;
 }
 
-main {
-  padding: 20px;
+/* =========================
+   Topbar
+========================= */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #34495e;
+  color: #fff;
+  padding: 12px 20px;
 }
 
-form input, form button {
-  display: block;
-  margin: 10px 0;
-  padding: 10px;
-  width: 100%;
-  max-width: 300px;
-}
-
-form button {
-  background: #1e1e2f;
-  color: white;
+.menu-btn {
+  font-size: 20px;
+  background: none;
+  color: #fff;
   border: none;
+}
+
+.logout-btn {
+  background: #e74c3c;
+  color: #fff;
+}
+
+/* =========================
+   Sections
+========================= */
+#login-section, #app-section {
+  padding: 40px;
+}
+
+#login-section {
+  max-width: 400px;
+  margin: 50px auto;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+#login-section form {
+  display: flex;
+  flex-direction: column;
+}
+
+#login-section input {
+  margin-bottom: 12px;
+  padding: 10px;
   border-radius: 6px;
-  cursor: pointer;
+  border: 1px solid #ccc;
+}
+
+#login-section button {
+  background: #3498db;
+  color: #fff;
+}
+
+/* App section content */
+#page-content {
+  margin-top: 20px;
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* =========================
+   Responsive
+========================= */
+@media (max-width: 768px) {
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .sidebar {
+    width: 200px;
+  }
 }

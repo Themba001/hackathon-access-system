@@ -1,69 +1,246 @@
-// Sidebar toggle
-const menuToggle = document.getElementById("menu-toggle");
-const sidebar = document.getElementById("sidebar");
+// app.js
 
-menuToggle.addEventListener("click", () => {
-  sidebar.classList.toggle("active");
-});
+// -------------------------------
+// Auth helpers
+// -------------------------------
+function saveToken(token) {
+  localStorage.setItem("access_token", token);
+}
+function getToken() {
+  return localStorage.getItem("access_token");
+}
+function clearToken() {
+  localStorage.removeItem("access_token");
+}
 
-// Auth
-const loginForm = document.getElementById("login-form");
-const loginSection = document.getElementById("login-section");
-const appSection = document.getElementById("app-section");
-const logoutBtn = document.getElementById("logout-btn");
+// -------------------------------
+// API wrappers
+// -------------------------------
+async function signup(email, password) {
+  const res = await fetch("http://127.0.0.1:8000/facilitators/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return res.json();
+}
 
-loginForm.addEventListener("submit", async (e) => {
+async function login(email, password) {
+  const res = await fetch("http://127.0.0.1:8000/facilitators/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  return { res, data };
+}
+
+async function apiFetch(path) {
+  const token = getToken();
+  const res = await fetch("http://127.0.0.1:8000" + path, {
+    headers: { Authorization: "Bearer " + token },
+  });
+  return res.json();
+}
+
+// -------------------------------
+// Section control
+// -------------------------------
+function showApp() {
+  document.getElementById("login-section").style.display = "none";
+  document.getElementById("app-section").style.display = "block";
+  document.getElementById("logout-btn").style.display = "inline-block";
+}
+
+function showLogin() {
+  document.getElementById("login-section").style.display = "flex";
+  document.getElementById("app-section").style.display = "none";
+  document.getElementById("logout-btn").style.display = "none";
+}
+
+// -------------------------------
+// Event Listeners
+// -------------------------------
+
+// Login
+document.getElementById("login-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email, password
-  });
+  try {
+    const { res, data } = await login(email, password);
 
-  if (error) {
-    Swal.fire("Error", error.message, "error");
-  } else {
-    Swal.fire("Success", "Welcome Facilitator!", "success");
-    loginSection.style.display = "none";
-    appSection.style.display = "block";
-    logoutBtn.style.display = "inline-block";
+    if (res.ok && data.access_token) {
+      saveToken(data.access_token);
+      Swal.fire("Welcome!", "Login successful", "success");
+      showApp();
+    } else {
+      Swal.fire("Error", data.detail || "Login failed", "error");
+    }
+  } catch (err) {
+    Swal.fire("Error", err.message, "error");
   }
 });
 
-logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  loginSection.style.display = "block";
-  appSection.style.display = "none";
-  logoutBtn.style.display = "none";
-  Swal.fire("Logged out", "Goodbye!", "info");
+// Signup (via SweetAlert)
+document.getElementById("signup-link")?.addEventListener("click", async (e) => {
+  e.preventDefault();
+
+  const { value: formValues } = await Swal.fire({
+    title: "Sign Up",
+    html: `
+      <input type="email" id="swal-email" class="swal2-input" placeholder="Email">
+      <input type="password" id="swal-password" class="swal2-input" placeholder="Password">
+    `,
+    focusConfirm: false,
+    preConfirm: () => {
+      return {
+        email: document.getElementById("swal-email").value,
+        password: document.getElementById("swal-password").value,
+      };
+    },
+  });
+
+  if (formValues) {
+    try {
+      const data = await signup(formValues.email, formValues.password);
+      if (data.message) {
+        Swal.fire("Success", data.message, "success");
+      } else {
+        Swal.fire("Error", data.detail || "Signup failed", "error");
+      }
+    } catch (err) {
+      Swal.fire("Error", err.message, "error");
+    }
+  }
 });
 
-// Page navigation
-document.querySelectorAll(".sidebar a").forEach(link => {
+// Logout
+document.getElementById("logout-btn")?.addEventListener("click", () => {
+  clearToken();
+  Swal.fire("Logged out", "You have been logged out.", "info");
+  showLogin();
+});
+
+// Sidebar toggle
+const sidebar = document.getElementById("sidebar");
+const menuToggle = document.getElementById("menu-toggle");
+const sidebarClose = document.getElementById("sidebar-close");
+
+menuToggle?.addEventListener("click", () => {
+  sidebar.classList.toggle("active");
+});
+
+// Close button inside sidebar
+sidebarClose?.addEventListener("click", () => {
+  sidebar.classList.remove("active");
+});
+
+// Sidebar navigation
+document.querySelectorAll(".sidebar a").forEach((link) => {
   link.addEventListener("click", (e) => {
     e.preventDefault();
-    const page = e.target.getAttribute("data-page");
-    const pageContent = document.getElementById("page-content");
+    const page = link.dataset.page;
 
-    switch(page) {
-      case "dashboard":
-        pageContent.innerHTML = "<h2>Dashboard</h2><p>Overview of participants.</p>";
-        break;
-      case "bus":
-        pageContent.innerHTML = "<h2>Bus Boarding</h2><p>Scan participant QR codes here.</p>";
-        break;
-      case "checkin":
-        pageContent.innerHTML = "<h2>Registration</h2><p>Scan participant QR codes here.</p>";
-        break;
-      case "meal":
-        pageContent.innerHTML = "<h2>Meal Collection</h2><p>Scan participant QR codes here.</p>";
-        break;
-      case "reports":
-        pageContent.innerHTML = "<h2>Reports</h2><p>Download attendance data here.</p>";
-        break;
+    // Reset page content
+    document.getElementById("page-content").innerHTML = "";
+
+    if (page === "bus") {
+      renderScannerPage("Bus Boarding", "/boarding");
+    } else if (page === "registration") {
+      renderScannerPage("Registration", "/registration");
+    } else if (page === "meals") {
+      renderScannerPage("Meal Collection", "/meals");
+    } else {
+      document.getElementById("page-content").innerHTML =
+        `<h2>${page}</h2><p>Loading content...</p>`;
     }
 
-    sidebar.classList.remove("active");
+    document.getElementById("sidebar").classList.remove("active");
   });
 });
+
+// Click outside sidebar to close
+document.addEventListener("click", (e) => {
+  if (
+    sidebar.classList.contains("active") &&
+    !sidebar.contains(e.target) &&
+    !menuToggle.contains(e.target)
+  ) {
+    sidebar.classList.remove("active");
+  }
+});
+
+// -------------------------------
+// QR Scanner Generic Handler
+// -------------------------------
+let html5QrcodeScanner;
+
+function renderScannerPage(title, endpoint) {
+  document.getElementById("page-content").innerHTML = `
+    <h2>${title}</h2>
+    <div id="qr-reader" style="width:300px;"></div>
+    <p id="scan-result" style="margin-top:10px; font-weight:bold;"></p>
+  `;
+  startScanner(endpoint);
+}
+
+function startScanner(endpoint) {
+  const qrRegionId = "qr-reader";
+
+  if (html5QrcodeScanner) {
+    html5QrcodeScanner.clear();
+  }
+
+  html5QrcodeScanner = new Html5Qrcode(qrRegionId);
+
+  html5QrcodeScanner
+    .start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      async (decodedText) => {
+        document.getElementById("scan-result").textContent =
+          "Scanned: " + decodedText;
+
+        try {
+          const token = getToken();
+          const res = await fetch("http://127.0.0.1:8000" + endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify({ qr_code: decodedText }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            Swal.fire("Success ✅", data.message || "Action completed", "success");
+          } else {
+            Swal.fire("Error", data.detail || "Action failed", "error");
+          }
+        } catch (err) {
+          Swal.fire("Error", err.message, "error");
+        }
+
+        html5QrcodeScanner.stop();
+      },
+      (errorMessage) => {
+        // ignore scan errors
+      }
+    )
+    .catch((err) => {
+      Swal.fire("Error", "Camera start failed: " + err, "error");
+    });
+}
+
+// -------------------------------
+// Init
+// -------------------------------
+if (getToken()) {
+  showApp();
+} else {
+  showLogin();
+}

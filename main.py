@@ -17,15 +17,14 @@ from dependencies import (
     get_current_facilitator,
 )
 
-# ---- App & CORS (open for token-in-header usage; no cookies) ----
 app = FastAPI(title="NWU Hackathon Access System")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # keep wide for now; lock down to your Netlify origin for prod
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=False,      # must be False when allow_origins == "*"
+    allow_credentials=False,
 )
 
 # ---- Health & root ----
@@ -37,7 +36,7 @@ def health():
 def root():
     return {"message": "API is running"}
 
-# ---- Email settings (optional in dev) ----
+# ---- Email setup ----
 SMTP_EMAIL = os.getenv("EMAIL_USER")
 SMTP_PASSWORD = os.getenv("EMAIL_PASS")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
@@ -45,7 +44,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT") or 587)
 
 def send_email(to_email: str, subject: str, body: str, attachment_path: Optional[str] = None) -> None:
     if not (SMTP_EMAIL and SMTP_PASSWORD):
-        return  # skip silently in dev if not configured
+        return
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = SMTP_EMAIL
@@ -104,11 +103,10 @@ class FacilitatorLogin(BaseModel):
 class Participant(BaseModel):
     name: str
     email: EmailStr
-    # NOTE: your DB schema doesn't have participant_type; we still use it on the ticket only.
     participant_type: Optional[str] = "Participant"
 
-class CheckInData(BaseModel):
-    qr_data: str
+class QRData(BaseModel):
+    qr_code: str
 
 class IdOnly(BaseModel):
     participant_id: str
@@ -118,7 +116,6 @@ class IdOnly(BaseModel):
 def facilitator_signup(data: FacilitatorSignup):
     res = supabase.table("profiles").select("*").eq("email", data.email).eq("role", "facilitator").execute()
     profile = res.data[0] if res.data else None
-
     if profile and profile.get("password_hash"):
         raise HTTPException(status_code=400, detail="Password already set. Please log in.")
 
@@ -127,7 +124,6 @@ def facilitator_signup(data: FacilitatorSignup):
         supabase.table("profiles").update({"password_hash": password_hash}).eq("email", data.email).eq("role", "facilitator").execute()
     else:
         supabase.table("profiles").insert({"email": data.email, "role": "facilitator", "password_hash": password_hash}).execute()
-
     return {"message": "Facilitator account ready."}
 
 @app.post("/facilitators/login")
@@ -149,7 +145,6 @@ def add_participant(data: Participant, _=Depends(get_current_facilitator)):
     new_id = str(uuid.uuid4())
     ticket_path = generate_ticket(data.name, data.email, data.participant_type or "Participant", new_id)
 
-    # Insert into participants (schema doesn't include participant_type)
     supabase.table("participants").insert({
         "participant_id": new_id,
         "full_name": data.name,
@@ -198,15 +193,18 @@ def resend_ticket(email: EmailStr = Body(..., embed=True), _=Depends(get_current
     send_email(email, "Your Hackathon Ticket", "Resending your ticket.", ticket["pdf_path"])
     return {"message": "Ticket resent."}
 
-# ---------------- Check-in (from QR) ----------------
-@app.post("/checkin")
-def checkin(data: CheckInData, _=Depends(get_current_facilitator)):
-    # QR format: name|email|participant_type|event_code
+# ---------------- QR Utilities ----------------
+def extract_email_from_qr(qr_code: str) -> str:
     try:
-        _, email, _, _ = [s.strip() for s in data.qr_data.split("|")]
+        _, email, _, _ = [s.strip() for s in qr_code.split("|")]
+        return email
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid QR code format")
 
+# ---------------- QR Endpoints ----------------
+@app.post("/checkin")
+def checkin(data: QRData, _=Depends(get_current_facilitator)):
+    email = extract_email_from_qr(data.qr_code)
     pres = supabase.table("participants").select("*").eq("email", email).execute()
     participant = pres.data[0] if pres.data else None
     if not participant:
@@ -217,7 +215,6 @@ def checkin(data: CheckInData, _=Depends(get_current_facilitator)):
         "checkin_timestamp": datetime.utcnow().isoformat()
     }).eq("participant_id", participant["participant_id"]).execute()
 
-    # attendance log (best-effort)
     try:
         supabase.table("attendance_logs").insert({
             "participant_id": participant["participant_id"],
@@ -230,22 +227,22 @@ def checkin(data: CheckInData, _=Depends(get_current_facilitator)):
 
     return {"message": f"{participant['full_name']} checked in."}
 
-# ---------------- Bus Boarding & Meal Collection ----------------
 @app.post("/boarding")
-def boarding(data: IdOnly, _=Depends(get_current_facilitator)):
-    pres = supabase.table("participants").select("full_name").eq("participant_id", data.participant_id).execute()
-    row = pres.data[0] if pres.data else None
-    if not row:
+def boarding_qr(data: QRData, _=Depends(get_current_facilitator)):
+    email = extract_email_from_qr(data.qr_code)
+    pres = supabase.table("participants").select("participant_id","full_name").eq("email", email).execute()
+    participant = pres.data[0] if pres.data else None
+    if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
 
     supabase.table("participants").update({
         "transport_status": True,
         "transport_timestamp": datetime.utcnow().isoformat()
-    }).eq("participant_id", data.participant_id).execute()
+    }).eq("participant_id", participant["participant_id"]).execute()
 
     try:
         supabase.table("attendance_logs").insert({
-            "participant_id": data.participant_id,
+            "participant_id": participant["participant_id"],
             "event_type": "boarding",
             "status": True,
             "timestamp": datetime.utcnow().isoformat()
@@ -253,23 +250,24 @@ def boarding(data: IdOnly, _=Depends(get_current_facilitator)):
     except Exception:
         pass
 
-    return {"message": f"{row['full_name']} boarded the bus."}
+    return {"message": f"{participant['full_name']} boarded the bus."}
 
 @app.post("/meals")
-def meals(data: IdOnly, _=Depends(get_current_facilitator)):
-    pres = supabase.table("participants").select("full_name").eq("participant_id", data.participant_id).execute()
-    row = pres.data[0] if pres.data else None
-    if not row:
+def meals_qr(data: QRData, _=Depends(get_current_facilitator)):
+    email = extract_email_from_qr(data.qr_code)
+    pres = supabase.table("participants").select("participant_id","full_name").eq("email", email).execute()
+    participant = pres.data[0] if pres.data else None
+    if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
 
     supabase.table("participants").update({
         "meal_status": True,
         "meal_timestamp": datetime.utcnow().isoformat()
-    }).eq("participant_id", data.participant_id).execute()
+    }).eq("participant_id", participant["participant_id"]).execute()
 
     try:
         supabase.table("attendance_logs").insert({
-            "participant_id": data.participant_id,
+            "participant_id": participant["participant_id"],
             "event_type": "meal",
             "status": True,
             "timestamp": datetime.utcnow().isoformat()
@@ -277,12 +275,11 @@ def meals(data: IdOnly, _=Depends(get_current_facilitator)):
     except Exception:
         pass
 
-    return {"message": f"{row['full_name']} collected a meal."}
+    return {"message": f"{participant['full_name']} collected a meal."}
 
-# ---------------- DEV helper (optional) ----------------
+# ---------------- DEV helper ----------------
 @app.post("/dev/create_facilitator")
 def dev_create_facilitator(email: EmailStr, password: str):
-    # handy for quick setup from Swagger
     password_hash = pwd_context.hash(password)
     supabase.table("profiles").insert({
         "email": email,

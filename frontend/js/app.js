@@ -3,7 +3,7 @@
 // -------------------------------
 // Config
 // -------------------------------
-const API_URL = "https://hackathon-access-system.onrender.com"; 
+const API_URL = "https://hackathon-access-system.onrender.com";
 
 // -------------------------------
 // Auth helpers
@@ -40,11 +40,17 @@ async function login(email, password) {
   return { res, data };
 }
 
-async function apiFetch(path) {
+async function apiFetch(path, method = "GET", body = null) {
   const token = getToken();
-  const res = await fetch(API_URL + path, {
+  const options = {
+    method,
     headers: { Authorization: "Bearer " + token },
-  });
+  };
+  if (body) {
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(API_URL + path, options);
   return res.json();
 }
 
@@ -75,7 +81,6 @@ document.getElementById("login-form")?.addEventListener("submit", async (e) => {
 
   try {
     const { res, data } = await login(email, password);
-
     if (res.ok && data.access_token) {
       saveToken(data.access_token);
       Swal.fire("Welcome!", "Login successful", "success");
@@ -88,23 +93,20 @@ document.getElementById("login-form")?.addEventListener("submit", async (e) => {
   }
 });
 
-// Signup (via SweetAlert)
+// Signup
 document.getElementById("signup-link")?.addEventListener("click", async (e) => {
   e.preventDefault();
-
   const { value: formValues } = await Swal.fire({
     title: "Sign Up",
     html: `
       <input type="email" id="swal-email" class="swal2-input" placeholder="Email">
       <input type="password" id="swal-password" class="swal2-input" placeholder="Password">
-    `, 
+    `,
     focusConfirm: false,
-    preConfirm: () => {
-      return {
-        email: document.getElementById("swal-email").value,
-        password: document.getElementById("swal-password").value,
-      };
-    },
+    preConfirm: () => ({
+      email: document.getElementById("swal-email").value,
+      password: document.getElementById("swal-password").value,
+    }),
   });
 
   if (formValues) {
@@ -133,52 +135,35 @@ const sidebar = document.getElementById("sidebar");
 const menuToggle = document.getElementById("menu-toggle");
 const sidebarClose = document.getElementById("sidebar-close");
 
-menuToggle?.addEventListener("click", () => {
-  sidebar.classList.toggle("active");
-});
-
-// Close button inside sidebar
-sidebarClose?.addEventListener("click", () => {
-  sidebar.classList.remove("active");
-});
+menuToggle?.addEventListener("click", () => sidebar.classList.toggle("active"));
+sidebarClose?.addEventListener("click", () => sidebar.classList.remove("active"));
 
 // Sidebar navigation
 document.querySelectorAll(".sidebar a").forEach((link) => {
   link.addEventListener("click", (e) => {
     e.preventDefault();
     const page = link.dataset.page;
-
-    // Reset page content
     document.getElementById("page-content").innerHTML = "";
 
-    if (page === "bus") {
-      renderScannerPage("Bus Boarding", "/boarding");
-    } else if (page === "registration") {
-      renderScannerPage("Registration", "/registration");
-    } else if (page === "meals") {
-      renderScannerPage("Meal Collection", "/meals");
-    } else {
-      document.getElementById("page-content").innerHTML =
-        `<h2>${page}</h2><p>Loading content...</p>`;
-    }
+    if (page === "bus") renderScannerPage("Bus Boarding", "/boarding");
+    else if (page === "registration") renderScannerPage("Check-In", "/checkin");
+    else if (page === "meals") renderScannerPage("Meal Collection", "/meals");
+    else document.getElementById("page-content").innerHTML =
+      `<h2>${page}</h2><p>Loading content...</p>`;
 
-    document.getElementById("sidebar").classList.remove("active");
+    sidebar.classList.remove("active");
   });
 });
 
-// Click outside sidebar to close
+// Close sidebar on outside click
 document.addEventListener("click", (e) => {
-  if (
-    sidebar.classList.contains("active") &&
-    !sidebar.contains(e.target) &&
-    !menuToggle.contains(e.target)
-  ) {
+  if (sidebar.classList.contains("active") && !sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
     sidebar.classList.remove("active");
   }
 });
 
 // -------------------------------
-// QR Scanner Generic Handler
+// QR Scanner
 // -------------------------------
 let html5QrcodeScanner;
 
@@ -194,58 +179,44 @@ function renderScannerPage(title, endpoint) {
 function startScanner(endpoint) {
   const qrRegionId = "qr-reader";
 
-  if (html5QrcodeScanner) {
-    html5QrcodeScanner.clear();
-  }
+  if (html5QrcodeScanner) html5QrcodeScanner.clear();
 
   html5QrcodeScanner = new Html5Qrcode(qrRegionId);
 
-  html5QrcodeScanner
-    .start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      async (decodedText) => {
-        document.getElementById("scan-result").textContent =
-          "Scanned: " + decodedText;
+  html5QrcodeScanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    async (decodedText) => {
+      document.getElementById("scan-result").textContent = "Scanned: " + decodedText;
 
-        try {
-          const token = getToken();
-          const res = await fetch(`${API_URL}${endpoint}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: "Bearer " + token,
-            },
-            body: JSON.stringify({ qr_code: decodedText }),
-          });
+      try {
+        const token = getToken();
+        const res = await fetch(`${API_URL}${endpoint}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ qr_code: decodedText }),
+        });
+        const data = await res.json();
 
-          const data = await res.json();
-
-          if (res.ok) {
-            Swal.fire("Success ✅", data.message || "Action completed", "success");
-          } else {
-            Swal.fire("Error", data.detail || "Action failed", "error");
-          }
-        } catch (err) {
-          Swal.fire("Error", err.message, "error");
-        }
-
-        html5QrcodeScanner.stop();
-      },
-      (errorMessage) => {
-        // ignore scan errors
+        if (res.ok) Swal.fire("Success ✅", data.message || "Action completed", "success");
+        else Swal.fire("Error", data.detail || "Action failed", "error");
+      } catch (err) {
+        Swal.fire("Error", err.message, "error");
       }
-    )
-    .catch((err) => {
-      Swal.fire("Error", "Camera start failed: " + err, "error");
-    });
+
+      html5QrcodeScanner.stop();
+    },
+    (errorMessage) => {}
+  ).catch((err) => {
+    Swal.fire("Error", "Camera start failed: " + err, "error");
+  });
 }
 
 // -------------------------------
 // Init
 // -------------------------------
-if (getToken()) {
-  showApp();
-} else {
-  showLogin();
-}
+if (getToken()) showApp();
+else showLogin();

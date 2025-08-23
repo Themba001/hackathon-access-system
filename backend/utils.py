@@ -28,14 +28,24 @@ def make_qr_png_bytes(payload: str) -> bytes:
     return buf.getvalue()
 
 def upload_qr_to_storage(supabase: Client, filename: str, png_bytes: bytes) -> str:
-    path = f"{filename}"
-    # upsert to avoid failures on reruns
-    supabase.storage.from_(QR_BUCKET).upload(
-        path=path, file=png_bytes, file_options={"content-type":"image/png", "upsert": True}
-    )
-    # Public URL (bucket must be public)
-    pub = supabase.storage.from_(QR_BUCKET).get_public_url(path)
-    return pub
+    """
+    Uploads QR PNG bytes to Supabase Storage bucket and returns public URL.
+    """
+    try:
+        path = f"{filename}"
+        # Use string "true" for upsert to avoid TypeError
+        supabase.storage.from_(QR_BUCKET).upload(
+            path=path,
+            file=png_bytes,
+            file_options={"content-type": "image/png", "upsert": "true"}
+        )
+        # Return public URL
+        pub = supabase.storage.from_(QR_BUCKET).get_public_url(path)
+        return pub
+    except Exception as e:
+        print(f"[ERROR] Failed to upload {filename} to storage: {e}")
+        return ""
+
 
 def parse_participants_line(line: str):
     """
@@ -45,11 +55,17 @@ def parse_participants_line(line: str):
     Name,Email,StudentNumber,Role
     """
     parts = [p.strip() for p in line.split(",")]
-    if len(parts) < 2: return None
-    full_name, email = parts[0], normalize_email(parts[1])
-    student_number = parts[2] if len(parts) >= 3 and parts[2] else None
+    if len(parts) < 3:  # require student number
+        return None
+
+    full_name = parts[2]  # what appears on certificate
+    student_number = parts[1]  # student number
     role = parts[3].lower() if len(parts) >= 4 and parts[3] else "participant"
     if role not in ("participant","judge"): role = "participant"
+
+    # Proper NWU email
+    email = f"{student_number}@mynwu.ac.za"
+
     return {
         "full_name": full_name,
         "email": email,

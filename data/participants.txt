@@ -1,3 +1,2 @@
 Themba Mabuza,39166287@mynwu.ac.za,39166287,participant
-Prof. Heleen Swart,heleen.swart@nwu.ac.za,,judge
-Jane Doe,12345678@mynwu.ac.za,12345678
+
